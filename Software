@@ -1,3 +1,4 @@
+#!/bin/bash
 ## 生物信息软件安装
 # 质控软件安装（fastqc、trimmomatic、multiqc）
 conda install fastqc trimmomatic multiqc
