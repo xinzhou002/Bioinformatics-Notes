@@ -1,0 +1,4 @@
+#!/bin/bash
+conda create -n antismash antismash
+conda activate antismash
+download-antismash-databases 
