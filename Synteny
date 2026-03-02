@@ -12,15 +12,16 @@ show-coords -THrd out.filtered.delta > out.filtered.coords
 # 使用 SAM 格式输入
 syri -c out.sam -r refgenome.fasta -q qrygenome.fasta -F S
 
-# 使用 MUMmer 生成的 coords 文件
+# 或使用 MUMmer 生成的 coords 文件
 syri -c out.filtered.coords -d out.filtered.delta -r refgenome.fasta -q qrygenome.fasta
 
+# 绘图
 mummerplot --layout out.best.delta -t postscript
 /usr/bin/ps2pdf out.ps  out.pdf 
 convert -density 300 out.pdf out.png 
 
-## genome.txt
-refgenome.fasta      Ref     ft:fa;lw:1.5;lc:black
-qrygenome.fasta Query   ft:fa;lw:1.5;lc:red
+  ## genome.txt
+  refgenome.fasta      Ref     ft:fa;lw:1.5;lc:black
+  qrygenome.fasta Query   ft:fa;lw:1.5;lc:red
 
 plotsr --sr syri.out --genomes genome.txt -o out.pdf
