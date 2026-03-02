@@ -1,0 +1,9 @@
+## FastQC原始数据质控
+# 测试数据集链接
+https://trace.ncbi.nlm.nih.gov/Traces?run=SRR32492217
+
+# 创建质控文件夹
+mkdir -p raw_fastqc trimmed_fastqc
+
+# 对原始数据进行质量评估
+fastqc -o raw_fastqc/ *.fq.gz
