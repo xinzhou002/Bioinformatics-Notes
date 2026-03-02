@@ -3,3 +3,6 @@ seqkit grep -p chr1 reference.fa > chr1.fa
 
 # 提取多条染色体（从列表文件）
 seqkit grep -f chr_list.txt reference.fa > selected_chr.fa
+
+# reverse complement
+seqkit seq -r -p input.fa > output.fa
