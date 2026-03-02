@@ -1,4 +1,4 @@
-## R
+#!/usr/bin/env Rscript
 # 安装并加载需要的包
 if (!require("readxl")) install.packages("readxl")
 if (!require("ggplot2")) install.packages("ggplot2")
