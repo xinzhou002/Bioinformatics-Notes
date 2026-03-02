@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+从 Newick 树中提取完整叶子节点名，自动生成 iTOL color-strip 文件。
+两种模式：
+A. 同 accession 同颜色（按 accession 分组）
+B. 每条叶子独立颜色
+Usage:
+    python newick2itol_color.py tree.newick > color_strip.txt
+"""
+
+import sys
+import re
+import colorsys
+
+# ---------- 参数 ----------
+COLOR_COUNT = 1000
+HSV_START, HSV_CYCLE, HSV_S, HSV_V = 0.0, 1.0, 0.85, 0.9
+# 想切换模式，改下面这个变量： "accession" 或 "full"
+MODE = "accession"   # "accession" 或 "full"
+
+# ---------- 工具 ----------
+def generate_colors(n):
+    colors = []
+    for i in range(n):
+        hue = (HSV_START + i / n * HSV_CYCLE) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(hue, HSV_S, HSV_V)
+        colors.append("#{:02X}{:02X}{:02X}".format(int(r*255), int(g*255), int(b*255)))
+    return colors
+
+def parse_leaves(newick):
+    """
+    返回叶子完整名列表（保留顺序）。
+    正则：匹配不含括号、逗号、冒号、分号的字符串，且前面一定是 '(' 或 ','。
+    """
+    leaf_re = re.compile(r'(?<=[(,])([^,():]+?)(?=:)')
+    leaves = leaf_re.findall(newick)
+    return leaves
+
+def build_itol_color_strip(id_color_map):
+    header = ["DATASET_COLORSTRIP",
+              "SEPARATOR TAB",
+              "DATASET_LABEL\tauto_color",
+              "COLOR\t#000000",
+              "STRIP_WIDTH\t25",
+              "MARGIN\t0",
+              "SHOW_LABELS\t1",
+              "DATA"]
+    lines = header
+    for leaf_id, color in id_color_map.items():
+        lines.append(f"{leaf_id}\t{color}")
+    return "\n".join(lines)
+
+def assign_colors_by_accession(leaves, colors):
+    """同 accession 同颜色"""
+    from collections import OrderedDict
+    acc2leaves = OrderedDict()
+    for leaf in leaves:
+        acc = leaf.split('_')[0]
+        acc2leaves.setdefault(acc, []).append(leaf)
+    palette = {acc: colors[i % len(colors)] for i, acc in enumerate(acc2leaves)}
+    leaf2color = {leaf: palette[acc] for acc, leaf_list in acc2leaves.items() for leaf in leaf_list}
+    return leaf2color
+
+def assign_colors_by_full(leaves, colors):
+    """每条叶子独立颜色"""
+    from collections import OrderedDict
+    leaf2color = OrderedDict()
+    for i, leaf in enumerate(leaves):
+        leaf2color[leaf] = colors[i % len(colors)]
+    return leaf2color
+
+# ---------- 主流程 ----------
+def main():
+    if len(sys.argv) != 2:
+        sys.exit("Usage: python newick2itol_color.py tree.newick > color_strip.txt")
+    with open(sys.argv[1], encoding='utf-8') as f:
+        newick = f.read().replace('\n', '')
+
+    leaves = parse_leaves(newick)
+    if not leaves:
+        sys.exit("未解析到任何叶子节点！")
+    # 去重但保留顺序
+    seen = set()
+    uniq_leaves = [lf for lf in leaves if not (lf in seen or seen.add(lf))]
+
+    colors = generate_colors(COLOR_COUNT)
+
+    if MODE == "accession":
+        id_color_map = assign_colors_by_accession(uniq_leaves, colors)
+    else:  # MODE == "full"
+        id_color_map = assign_colors_by_full(uniq_leaves, colors)
+
+    print(build_itol_color_strip(id_color_map))
+
+if __name__ == "__main__":
+    main()
