@@ -1,3 +1,4 @@
+#!/bin/bash
 # 提取单条染色体
 seqkit grep -p chr1 reference.fa > chr1.fa
 
