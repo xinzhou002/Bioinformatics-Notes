@@ -1,0 +1,64 @@
+## R
+# 安装并加载需要的包
+if (!require("readxl")) install.packages("readxl")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("e1071")) install.packages("e1071")
+library(readxl)
+library(ggplot2)
+library(e1071)
+
+# 读取Excel文件
+data <- read_excel("your_file.xlsx")  # 替换为你的文件路径
+
+# 假设数据框的列名为 "ID" 和 "Value"
+values <- data$Value
+ids <- data$ID
+
+# 初始化变量
+best_p_value <- -1
+best_combination <- NULL
+best_indices <- NULL
+
+# 设置重复次数
+num_iterations <- 1000
+
+# 进行多次随机抽样
+for (i in 1:num_iterations) {
+  sample_indices <- sample(length(values), 30)
+  sample_values <- values[sample_indices]
+  
+  test_result <- shapiro.test(sample_values)
+  p_value <- test_result$p.value
+  
+  if (p_value > best_p_value) {
+    best_p_value <- p_value
+    best_combination <- sample_values
+    best_indices <- sample_indices
+  }
+}
+
+# 输出最佳组合的ID和Value
+best_ids <- ids[best_indices]
+result <- data.frame(ID = best_ids, Value = best_combination)
+print(result)
+
+# 绘制直方图并添加正态分布曲线
+ggplot(result, aes(x = Value)) +
+  geom_histogram(aes(y = ..density..), binwidth = 1, color = "black", fill = "blue", alpha = 0.7) +
+  geom_density(color = "red", size = 1) +
+  stat_function(fun = dnorm, args = list(mean = mean(best_combination), sd = sd(best_combination)), color = "green", size = 1) +
+  labs(title = "Histogram with Normal Distribution Curve",
+       x = "Value",
+       y = "Density") +
+  theme_minimal()
+
+# 绘制Q-Q图
+qqnorm(best_combination)
+qqline(best_combination, col = "red")
+
+# 计算偏度和峰度
+skewness_value <- skewness(best_combination)
+kurtosis_value <- kurtosis(best_combination)
+
+cat("Skewness:", skewness_value, "\n")
+cat("Kurtosis:", kurtosis_value, "\n")
