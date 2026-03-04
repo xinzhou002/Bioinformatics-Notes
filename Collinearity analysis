@@ -3,25 +3,27 @@ conda install -c bioconda syri
 conda install -c bioconda plotsr
 
 # 使用 minimap2 生成 SAM 格式比对结果
-minimap2 -ax asm5 --eqx refgenome.fasta qrygenome.fasta > out.sam
+minimap2 -ax asm5 --eqx $ref $query > out.sam
 
 # 或使用 MUMmer 生成 delta 文件
-nucmer --mum -l 100 -c 100 refgenome.fasta qrygenome.fasta
-delta-filter -1 -i 95 -l 100 out.delta > out.filtered.delta
-show-coords -THrd out.filtered.delta > out.filtered.coords
+nucmer --mum -l 100 -c 100 $ref $query -p $prefix
+delta-filter -1 -i 95 -l 100 $prefix.delta > $prefix.filtered.delta
+show-coords -THrd $prefix.filtered.delta > $prefix.filtered.coords
 
 # 使用 SAM 格式输入
-syri -c out.sam -r refgenome.fasta -q qrygenome.fasta -F S
+syri -c out.sam -r $ref -q $query -F S
 
 # 使用 MUMmer 生成的 coords 文件
-syri -c out.filtered.coords -d out.filtered.delta -r refgenome.fasta -q qrygenome.fasta
+syri -c $prefix.filtered.coords -d $prefix.filtered.delta -r $ref -q $query
 
-mummerplot --layout out.best.delta -t postscript
-/usr/bin/ps2pdf out.ps  out.pdf 
-convert -density 300 out.pdf out.png 
+# mummerplot绘图
+mummerplot -p $prefix --layout $prefix.filtered.delta -t postscript
+/usr/bin/ps2pdf <outpfix>.ps  <outpfix>.pdf 
+convert -density 300 <outpfix>.pdf <outpfix>.png 
 
+# plotsr绘图
 ## genome.txt
-refgenome.fasta      Ref     ft:fa;lw:1.5;lc:black
-qrygenome.fasta Query   ft:fa;lw:1.5;lc:red
+$ref      Ref     ft:fa;lw:1.5;lc:black
+$query Query   ft:fa;lw:1.5;lc:red
 
 plotsr --sr syri.out --genomes genome.txt -o out.pdf
