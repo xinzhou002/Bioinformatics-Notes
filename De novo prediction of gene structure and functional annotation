@@ -16,3 +16,185 @@ conda update conda
 # 验证安装
 conda --version
 
+## 配置Conda镜像
+vim ~/.condarc
+
+# 添加以下内容
+channels:
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/msys2
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/bioconda
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/menpo
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch-lts
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/simpleitk
+- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/deepmodeling
+- defaults
+show_channel_urls: true
+
+## 生物信息软件安装
+# 质控软件安装（fastqc、trimmomatic、multiqc）
+conda install fastqc trimmomatic multiqc
+
+# 组装软件安装（SPAdes）
+wget https://github.com/ablab/spades/releases/download/v4.0.0/SPAdes-4.0.0-Linux.tar.gz
+tar -zxvf SPAdes-4.0.0-Linux.tar.gz
+rm SPAdes-4.0.0-Linux.tar.gz  # 删除压缩包节省空间
+vim ~/.bashrc
+export PATH=$PATH:$HOME/download/SPAdes-4.0.0-Linux/bin
+
+# 评价软件安装(quast、busco)
+conda install quast
+
+conda create --name busco
+conda activate busco
+conda install busco
+
+# 重复序列注释(repeatmasker)
+conda install repeatmasker
+
+# denovo预测基因结构（augustus）
+wget http://augustus.gobics.de/binaries/augustus.2.5.5.tar.gz
+tar -zxvf augustus.2.5.5.tar.gz
+rm augustus.2.5.5.tar.gz
+cd augustus.2.5.5/src
+make
+vim ~/.bashrc
+export AUGUSTUS_CONFIG_PATH=$HOME/download/augustus.2.5.5/config
+export PATH=$PATH:$HOME/download/augustus.2.5.5/bin
+
+# 功能注释（blast）（NR、KEGG、Swiss-Prot、TrEMBL）
+wget https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/ncbi-blast-2.16.0+-x64-linux.tar.gz
+tar -zxvf ncbi-blast-2.16.0+-x64-linux.tar.gz
+rm ncbi-blast-2.16.0+-x64-linux.tar.gz
+cd ncbi-blast-2.16.0+
+pwd
+vim ~/.bashrc
+export PATH=$PATH:$HOME/download/blast/bin
+export BLASTDB=$HOME/download/blast/db
+
+# 功能注释（interproscan）（GO）
+wget https://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.73-104.0/interproscan-5.73-104.0-64-bit.tar.gz
+wget https://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.73-104.0/interproscan-5.73-104.0-64-bit.tar.gz.md5
+md5sum -c interproscan-5.73-104.0-64-bit.tar.gz.md5
+tar -pxvzf interproscan-5.73-104.0-64-bit.tar.gz
+rm interproscan-5.73-104.0-64-bit.tar.gz*
+cd interproscan-5.73-104.0
+python3 setup.py -f interproscan.properties
+./interproscan.sh
+
+## FastQC原始数据质控
+# 测试数据集链接
+https://trace.ncbi.nlm.nih.gov/Traces?run=SRR32492217
+
+# 创建质控文件夹
+mkdir -p raw_fastqc trimmed_fastqc
+
+# 对原始数据进行质量评估
+fastqc -o raw_fastqc/ *.fq.gz
+
+## Trimmomatic过滤低质量序列
+# 使用Trimmomatic去除低质量序列和接头
+java -jar trimmomatic-0.39.jar PE \
+forward.fq.gz reverse.fq.gz \
+forward_paired.fq.gz forward_unpaired.fq.gz reverse_paired.fq.gz reverse_unpaired.fq.gz \
+ILLUMINACLIP:TruSeq3-PE.fa:2:30:10:2:True \
+LEADING:3 \
+TRAILING:3 \
+MINLEN:36
+
+## 质控后检查
+# 对过滤后的数据进行质量评估
+fastqc -o trimmed_fastqc/ forward_paired.fq.gz reverse_paired.fq.gz
+
+# 生成质控报告
+multiqc . -o multiqc_report
+
+## 使用SPAdes进行基因组组装
+spades.py --pe1-1 forward_paired.fq.gz --pe1-2 reverse_paired.fq.gz -o spades_out --careful  # 提高组装准确性
+
+## 使用QUAST评估组装质量
+quast.py contigs.fa -o quast_out/
+
+## 使用BUSCO评估基因组完整性
+conda activate busco 
+busco -i contigs.fa -l $HOME/database/busco/fungi_odb10/ -o busco_out -m genome
+
+## 使用RepeatMasker进行重复序列注释
+RepeatMasker contigs.fa -species saccharomyces -dir repeatmasker_out
+
+## 使用Augustus进行基因结构预测
+augustus --species=saccharomyces_cerevisiae_S288C ./repeatmasker_out/contigs.fa.masked > ./augustus_out/contigs.fa.masked.gff
+
+# 从预测结果中提取蛋白序列
+gffread contigs.fa.masked.gff -g contigs.fa -y protein.fa
+# 清理蛋白质序列文件中的无效残基字符,如果需要的话
+sed -E '/^>/! s/[^ACDEFGHIKLMNPQRSTVWYX*-]//g' input.fa > cleaned.fa
+
+## NR注释
+# 下载并准备NR数据库
+wget -c -A *.faa.gz https://ftp.ncbi.nlm.nih.gov/refseq/release/fungi/ -P ./RefSeq
+zcat *.gz > ./RefSeq/fungi.protein.faa
+
+# 创建BLAST数据库
+makeblastdb -in fungi.protein.faa -dbtype prot -out fungi.protein.faa
+
+# 进行BLAST比对
+blastp -db fungi.protein.faa -query protein.fa -out protein.fa_RefSeq_blastp -outfmt 6 -max_target_seqs 5
+
+## eggNOG-mapper注释
+# 创建独立环境（可选）
+conda create --name eggnog python=3.8
+conda activate eggnog
+
+# 安装依赖
+conda install -c bioconda eggnog-mapper
+
+# 下载并配置数据库
+mkdir -p $HOME/database/eggnog
+cd $HOME/database/eggnog
+download_eggnog_data.py -y  --data_dir .
+
+# 运行注释
+emapper.py -i protein.fa --itype proteins \
+  --output eggnog_annotation \
+  --data_dir $HOME/database/eggnog \
+  --cpu 8 \
+  --tax_scope auto \
+  --go_evidence non-electronic \
+  --report_orthologs
+
+## Swiss-Prot注释
+# 下载Swiss-Prot数据库
+wget -c https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
+gzip -d uniprot_sprot.fasta.gz
+
+# 创建BLAST数据库
+makeblastdb -in uniprot_sprot.fasta -dbtype prot -out uniprot_sprot
+
+# 进行BLAST比对
+blastp -db uniprot_sprot -query protein.fa -out protein.fa_SwissProt_blastp -outfmt 6 -max_target_seqs 5
+
+## TrEMBL注释
+# 下载TrEMBL数据库
+wget -c https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_trembl.fasta.gz
+gzip -d uniprot_trembl.fasta.gz
+
+# 创建BLAST数据库
+makeblastdb -in uniprot_trembl.fasta -dbtype prot -out uniprot_trembl
+
+# 进行BLAST比对
+blastp -db uniprot_trembl -query protein.fa -out protein.fa_TrEMBL_blastp -outfmt 6 -max_target_seqs 5
+
+## InterPro和GO注释
+# 使用InterProScan进行功能注释
+java -Xmx4G -jar interproscan-5.jar \
+  -u /path/to/your/directory \
+  -i proteins.fa \
+  -f tsv \
+  -o interpro_results.tsv \
+  -goterms \
+  -pa # 指定输出GO注释和通路信息
