@@ -1,0 +1,140 @@
+#!/bin/bash
+## 创建并激活 conda 环境
+conda create -n variant_calling
+conda activate variant_calling
+
+## 安装 bwa、samtools、fastqc、bcftools 和 gffread
+conda install bwa samtools fastqc bcftools gffread
+
+
+## 安装 snpEff
+wget https://snpeff.blob.core.windows.net/versions/snpEff_latest_core.zip
+unzip snpEff_latest_core.zip
+
+export SNPEFF_HOME="$HOME/download/snpEff"
+export PATH="$SNPEFF_HOME:$PATH"
+
+
+## 安装 sratoolkit
+wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/3.2.0/sratoolkit.3.2.0-ubuntu64.tar.gz
+tar -zxvf sratoolkit.3.2.0-ubuntu64.tar.gz
+rm sratoolkit.3.2.0-ubuntu64.tar.gz
+export PATH=$HOME/download/sratoolkit.3.2.0-ubuntu64/bin:$PATH
+
+
+## 安装 Trimmomatic
+wget -c https://github.com/usadellab/Trimmomatic/archive/refs/tags/v0.39.tar.gz
+tar -zxvf v0.39.tar.gz
+rm v0.39.tar.gz
+
+
+## 安装 multiqc
+conda install -c bioconda multiqc
+
+
+## 安装 java
+wget -c https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/x64/linux/OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz
+mkdir -p ~/java
+tar -xvf OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz
+vim ~/.bashrc
+export JAVA_HOME=~/jdk-21.0.6+7
+export PATH=$JAVA_HOME/bin:$PATH
+source ~/.bashrc
+java -version
+
+
+## 下载测序数据
+prefetch SRR31620080
+
+fastq-dump --split-files SRR31620080.sra
+
+
+## 下载参考基因组和注释文件
+wget -c http://ftp.ensemblgenomes.org/pub/fungi/release-60/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa.gz
+
+gunzip Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa.gz
+
+wget -c https://ftp.ensemblgenomes.ebi.ac.uk/pub/fungi/release-60/gff3/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.60.gff3.gz
+
+gunzip Saccharomyces_cerevisiae.R64-1-1.60.gff3.gz
+
+
+## 使用 bwa 对参考基因组进行索引
+bwa index Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa
+
+
+## 使用 samtools 对参考基因组进行索引
+samtools faidx Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa
+
+
+## 使用 fastqc 和 multiqc 进行质量评估
+mkdir  fastqc_out/
+fastqc SRR31620080_1.fastq  SRR31620080_2.fastq -o fastqc_out/
+multiqc . -o multiqc_report/
+
+
+## 使用 Trimmomatic 进行数据修剪
+java -jar $HOME/download/Trimmomatic-0.39/trimmomatic-0.39.jar PE \
+SRR31620080_1.fastq SRR31620080_2.fastq \
+SRR31620080_1_paired.fastq SRR31620080_1_unpaired.fastq \
+SRR31620080_2_paired.fastq SRR31620080_2_unpaired.fastq \
+ILLUMINACLIP:$HOME/download/Trimmomatic-0.39/adapters/TruSeq3-PE.fa:2:30:10 \
+LEADING:3 \
+TRAILING:3 \
+SLIDINGWINDOW:4:15 \
+MINLEN:36
+
+
+## 使用 bwa 进行比对
+bwa mem Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa SRR31620080_1_paired.fastq SRR31620080_2_paired.fastq > SRR31620080.sam
+
+
+## 将 SAM 转换为 BAM 并排序
+samtools view -bhS -t  Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa.fai -o SRR31620080.bam SRR31620080.sam
+
+samtools sort -o SRR31620080_sorted.bam SRR31620080.bam
+
+
+## 统计比对信息
+samtools flagstat SRR31620080_sorted.bam > alignment_stats.txt
+
+
+## 使用 bcftools 进行变异检测
+bcftools mpileup -f Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa SRR31620080_sorted.bam > SRR31620080.bcf
+bcftools call -vm SRR31620080.bcf -o SRR31620080.variants.bcf
+bcftools view -v snps,indels SRR31620080.variants.bcf > SRR31620080.snps.vcf
+bcftools filter -e 'QUAL<20 || DP<10' SRR31620080.snps.vcf -o SRR31620080.filtered.vcf
+
+
+## 配置 snpEff.config
+echo "saccharomyces_cerevisiae.genome : Saccharomyces cerevisiae" >> $HOME/download/snpEff/snpEff.config
+
+
+## 创建目录并放置文件
+mkdir -p $HOME/download/snpEff/data/saccharomyces_cerevisiae
+cd $HOME/download/snpEff/data/saccharomyces_cerevisiae
+
+
+## 下载并重命名文件
+wget -c http://ftp.ensemblgenomes.org/pub/fungi/release-60/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa.gz
+gunzip Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa.gz
+mv Saccharomyces_cerevisiae.R64-1-1.dna.toplevel.fa sequences.fa
+
+wget -c https://ftp.ensemblgenomes.ebi.ac.uk/pub/fungi/release-60/gff3/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.60.gff3.gz
+gunzip Saccharomyces_cerevisiae.R64-1-1.60.gff3.gz
+mv Saccharomyces_cerevisiae.R64-1-1.60.gff3 genes.gff3
+
+gffread -o $HOME/download/snpEff/data/saccharomyces_cerevisiae/genes.gff3 > $HOME/download/snpEff/data/saccharomyces_cerevisiae/genes.gff
+
+gffread -g $HOME/download/snpEff/data/saccharomyces_cerevisiae/sequences.fa$HOME/download/snpEff/data/saccharomyces_cerevisiae/genes.gff3 -x $HOME/download/snpEff/data/saccharomyces_cerevisiae/cds.fa
+
+gffread -g $HOME/download/snpEff/data/saccharomyces_cerevisiae/sequences.fa$HOME/download/snpEff/data/saccharomyces_cerevisiae/genes.gff3 -y $HOME/download/snpEff/data/saccharomyces_cerevisiae/protein.fa
+
+
+## 构建数据库
+cd $HOME/download/snpEff/
+java -jar $HOME/download/snpEff/snpEff.jar build -gff3 -v saccharomyces_cerevisiae -dataDir $HOME/download/snpEff/data
+
+
+## 注释
+java -jar $HOME/download/snpEff/snpEff.jar ann saccharomyces_cerevisiae SRR31620080.filtered.vcf > SRR31620080.ann.vcf
