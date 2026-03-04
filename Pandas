@@ -1,0 +1,189 @@
+#!/usr/bin/python
+## 使用Pandas进行注释整合
+import pandas as pd
+import os
+import sys
+import logging
+from datetime import datetime
+import re
+
+# ----------------------
+# 全局配置
+# ----------------------
+INPUT_FILES = {
+    "blast_nr": "protein.fa_RefSeq_blastp",
+    "blast_swissprot": "protein.fa_SwissProt_blastp",
+    "blast_trembl": "protein.fa_TrEMBL_blastp",
+    "kegg_annotation": "protein.fa.ko",  
+    "interproscan_results": "interproscan_results.tsv",
+    "eggnog_annotation": "eggnog_annotation.emapper.annotations"
+}
+
+OUTPUT_FORMAT = "csv"  
+OUTPUT_FILE = "combined_annotations"
+
+# ----------------------
+# 日志配置
+# ----------------------
+logging.basicConfig(
+    filename="annotation_integration.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s: %(message)s"
+)
+
+def validate_inputs(input_files):
+    """检查输入文件是否存在，记录缺失文件但不终止程序"""
+    missing_files = []
+    for key, path in input_files.items():
+        if not os.path.exists(path):
+            missing_files.append(path)
+            logging.warning(f"文件缺失: {path}")
+    if missing_files:
+        print(f"警告：以下文件缺失 - {', '.join(missing_files)}，将跳过这些文件的注释。")
+
+# 调整BLAST列定义（兼容outfmt 6完整字段）
+blast_cols = [
+    "GeneID", "SubjectID", "Identity", "AlignmentLength",
+    "Mismatches", "GapOpens", "QueryStart", "QueryEnd",
+    "SubjectStart", "SubjectEnd", "Evalue", "BitScore"
+]
+
+def load_blast_result(file_path):
+    """加载BLAST结果，自动识别列名，如果文件不存在返回空DataFrame"""
+    try:
+        if not os.path.exists(file_path):
+            logging.warning(f"BLAST文件缺失: {file_path}")
+            return pd.DataFrame(columns=["GeneID", "SubjectID", "Evalue", "Identity"])
+        df = pd.read_csv(file_path, sep="\t", header=None, names=blast_cols)
+        return df[["GeneID", "SubjectID", "Evalue", "Identity"]]
+    except Exception as e:
+        logging.error(f"加载BLAST文件失败: {str(e)}")
+        return pd.DataFrame(columns=["GeneID", "SubjectID", "Evalue", "Identity"])
+
+# KEGG注释加载时跳过注释行
+def load_kegg_annotation(file_path):
+    """加载KEGG注释结果（.ko文件），如果文件不存在返回空DataFrame"""
+    try:
+        if not os.path.exists(file_path):
+            logging.warning(f"KEGG注释文件缺失: {file_path}")
+            return pd.DataFrame(columns=["GeneID", "KO_ID"])
+        df = pd.read_csv(file_path, sep="\t", header=None, comment='#', names=["GeneID", "KO_ID"])
+        return df
+    except Exception as e:
+        logging.error(f"加载KEGG注释失败: {str(e)}")
+        return pd.DataFrame(columns=["GeneID", "KO_ID"])
+
+def load_eggnog_annotation(file_path):
+    """加载eggNOG注释结果，如果文件不存在返回空DataFrame"""
+    try:
+        if not os.path.exists(file_path):
+            logging.warning(f"eggNOG注释文件缺失: {file_path}")
+            return pd.DataFrame(columns=["GeneID", "COG", "KEGG_ko", "GO_Term", "Description"])
+        df = pd.read_csv(
+            file_path,
+            sep="\t",
+            comment="#",
+            usecols=["#query", "COG_category", "KEGG_ko", "GOs", "Description"],
+            names=["GeneID", "COG", "KEGG_ko", "GO_Term", "Description"]
+        )
+        return df
+    except Exception as e:
+        logging.error(f"加载eggNOG注释失败: {str(e)}")
+        return pd.DataFrame(columns=["GeneID", "COG", "KEGG_ko", "GO_Term", "Description"])
+
+def load_interproscan_results(file_path):
+    """加载InterProScan结果，如果文件不存在返回空DataFrame"""
+    try:
+        if not os.path.exists(file_path):
+            logging.warning(f"InterProScan结果文件缺失: {file_path}")
+            return pd.DataFrame(columns=["GeneID", "InterProID", "GO_Term"])
+        df = pd.read_csv(
+            file_path,
+            sep="\t",
+            header=None,
+            usecols=[0, 11, 12],
+            names=["GeneID", "InterProID", "GO_Term"]
+        )
+        df["GO_Term"] = df["GO_Term"].str.split("|").apply(lambda x: ", ".join(x) if isinstance(x, list) else x)
+        return df
+    except Exception as e:
+        logging.error(f"加载InterProScan结果失败: {str(e)}")
+        return pd.DataFrame(columns=["GeneID", "InterProID", "GO_Term"])
+
+# 基因ID标准化（兼容版本号）
+def standardize_gene_id(gene_id):
+    match = re.match(r"^([^\.]+)", gene_id)
+    return match.group(1) if match else gene_id
+
+def main():
+    print(f"\n🚀 开始注释整合 ({datetime.now().strftime('%Y-%m-%d %H:%M')})")
+    validate_inputs(INPUT_FILES)
+
+    try:
+        # ----------------------
+        # 加载数据
+        # ----------------------
+        logging.info("加载NR注释...")
+        blast_nr = load_blast_result(INPUT_FILES["blast_nr"]).rename(columns={"SubjectID": "NR_ID"})
+
+        logging.info("加载SwissProt注释...")
+        blast_swissprot = load_blast_result(INPUT_FILES["blast_swissprot"]).rename(columns={"SubjectID": "SwissProt_ID"})
+
+        logging.info("加载TrEMBL注释...")
+        blast_trembl = load_blast_result(INPUT_FILES["blast_trembl"]).rename(columns={"SubjectID": "TrEMBL_ID"})
+
+        logging.info("加载KEGG注释...")
+        kegg = load_kegg_annotation(INPUT_FILES["kegg_annotation"])
+
+        logging.info("加载eggNOG注释...")
+        eggnog = load_eggnog_annotation(INPUT_FILES["eggnog_annotation"])
+
+        logging.info("加载InterProScan结果...")
+        interpro = load_interproscan_results(INPUT_FILES["interproscan_results"])
+
+        # ----------------------
+        # 数据整合
+        # ----------------------
+        logging.info("合并数据...")
+        # 初始化合并数据框
+        merged = blast_nr
+        
+        # 逐步合并其他数据框，如果数据框为空则跳过
+        if not blast_swissprot.empty:
+            merged = merged.merge(blast_swissprot, on="GeneID", how="outer")
+        if not blast_trembl.empty:
+            merged = merged.merge(blast_trembl, on="GeneID", how="outer")
+        if not kegg.empty:
+            merged = merged.merge(kegg, on="GeneID", how="outer")  
+        if not eggnog.empty:
+            merged = merged.merge(eggnog, on="GeneID", how="left")
+        if not interpro.empty:
+            merged = merged.merge(interpro, on="GeneID", how="outer")
+
+        # ----------------------
+        # 数据清洗
+        # ----------------------
+        merged.fillna("NA", inplace=True)
+        merged["GeneID"] = merged["GeneID"].astype(str).str.strip()  
+
+        # 标准化基因ID
+        merged["GeneID"] = merged["GeneID"].apply(standardize_gene_id)
+
+        # ----------------------
+        # 输出结果
+        # ----------------------
+        output_path = f"{OUTPUT_FILE}.{OUTPUT_FORMAT}"
+        if OUTPUT_FORMAT == "csv":
+            merged.to_csv(output_path, index=False)
+        else:
+            merged.to_csv(output_path, sep="\t", index=False)
+
+        print(f"\n✅ 整合完成！结果保存至: {os.path.abspath(output_path)}")
+        logging.info(f"输出文件生成: {output_path}")
+
+    except Exception as e:
+        logging.critical(f"致命错误: {str(e)}")
+        sys.exit(f"\n❌ 程序异常终止: {str(e)}")
+
+if __name__ == "__main__":
+    main()
