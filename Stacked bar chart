@@ -1,0 +1,113 @@
+# RStudio
+# tidyverse：用于数据处理和可视化
+# forcats：用于因子（分类变量）处理
+# RColorBrewer：用于颜色映射
+# ggplot2：用于绘制图表
+
+library(tidyverse)
+library(forcats)
+library(RColorBrewer)
+library(ggplot2)
+
+# 读取数据
+species_data <- read.csv("C:/Users/user/Desktop/work/species.csv")
+
+# 1. 计算每个物种的总计数
+species_sum <- species_data %>% 
+    count(genus, species, name = "species_total")
+
+# 2. 计算每个属的总计数
+genus_sum <- species_sum %>% 
+    group_by(genus) %>% 
+    summarise(genus_total = sum(species_total), .groups = "drop")
+
+# 3. 合并低丰度属到"Others"
+species_processed <- species_sum %>% 
+    left_join(genus_sum, by = "genus") %>% 
+    mutate(
+        genus_group = if_else(genus_total >= 50, genus, "Others"),
+        species_name = paste(genus, species)
+    )
+
+# 4. 排序处理
+valid_genus_order <- genus_sum %>% 
+    filter(genus_total >= 50) %>% 
+    arrange(-genus_total) %>% 
+    pull(genus)
+
+species_processed <- species_processed %>% 
+    mutate(
+        genus_group = fct_relevel(genus_group, c(valid_genus_order, "Others"))
+    ) %>% 
+    arrange(genus_group)
+
+# 5. 双行标签数据
+label_data <- species_processed %>%
+    filter(species_total >= 50) %>% 
+    group_by(genus_group) %>%
+    mutate(
+        cum_height = cumsum(species_total),
+        label_pos = cum_height - species_total/2,
+        label = sprintf("%s\n(%s)", species_name, species_total)
+    ) %>%
+    ungroup() %>%
+    mutate(label_pos = pmax(label_pos, 0))
+
+# 6. 属总计标签数据
+genus_group_sum <- species_processed %>%
+    group_by(genus_group) %>%
+    summarise(
+        genus_group_total = sum(species_total),
+        y_pos = genus_group_total * 1.05  # 上移5%
+    )
+
+# 7. 颜色映射
+species_colors <- colorRampPalette(brewer.pal(12, "Paired"))(
+    n_distinct(species_processed$species_name)
+)
+names(species_colors) <- unique(species_processed$species_name)
+
+# 8. 绘图
+p <- ggplot(species_processed, aes(x = genus_group, y = species_total, fill = species_name)) +
+    geom_col(width = 0.85) +
+    # 物种双行标签
+    geom_text(
+        data = label_data,
+        aes(y = label_pos, label = label),
+        size = 1.2, color = "gray20", lineheight = 0.75, check_overlap = FALSE
+    ) +
+    # 属总计标签
+    geom_text(
+        data = genus_group_sum,
+        aes(x = genus_group, y = y_pos, label = genus_group_total),
+        inherit.aes = FALSE,  
+        size = 3.8, color = "black", fontface = "bold", vjust = 0
+    ) +
+    scale_fill_manual(values = species_colors) +
+    labs(
+        x = "Fungal Genus (Grouped by Abundance)",
+        y = "Number of Species",
+        title = "Fungal Community Composition Across 2961 Samples"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, face = "italic"),
+        panel.grid.major.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        legend.position.inside = c(1, 0),
+        legend.justification = c(0, 0.5),
+        legend.key.size = unit(0.1, "cm"),
+        legend.text = element_text(size = 4),
+        legend.title = element_blank(),
+        plot.margin = unit(c(1, 5, 1, 1), "cm")
+    ) +
+    guides(fill = guide_legend(ncol = 4)) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.15)))
+
+# 9. 验证样本总数
+total_samples <- sum(species_processed$species_total)
+print(paste("Total samples verified:", total_samples)) 
+
+# 10. 保存图形
+ggsave("C:/Users/user/Desktop/work/Fungal_community_composition.png", 
+       plot = p, width = 14, height = 8, dpi = 300)
