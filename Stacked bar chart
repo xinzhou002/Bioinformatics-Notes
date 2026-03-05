@@ -1,3 +1,4 @@
+#!/usr/bin/env Rscript
 # RStudio
 # tidyverse：用于数据处理和可视化
 # forcats：用于因子（分类变量）处理
