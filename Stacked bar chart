@@ -88,7 +88,7 @@ p <- ggplot(species_processed, aes(x = genus_group, y = species_total, fill = sp
     labs(
         x = "Fungal Genus (Grouped by Abundance)",
         y = "Number of Species",
-        title = "Fungal Community Composition Across 2961 Samples"
+        title = "Fungal Community Composition"
     ) +
     theme_minimal(base_size = 12) +
     theme(
