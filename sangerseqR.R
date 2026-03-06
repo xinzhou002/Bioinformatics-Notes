@@ -1,3 +1,4 @@
+#!/usr/bin/env Rscript
 # RStudio
 # 批量解析 Sanger 测序 .ab1 文件
 # 输出：每条序列的主链、次链序列，以及杂合位点列表
