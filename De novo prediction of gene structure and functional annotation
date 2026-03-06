@@ -1,10 +1,5 @@
 #!/bin/bash
 ##  Conda安装与配置
-# 下载最新版Anaconda
-wget https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Linux-x86_64.sh
-
-# 执行安装脚本
-sh Anaconda3-2024.06-1-Linux-x86_64.sh 
 
 # 配置环境变量
 echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> ~/.bashrc
@@ -16,24 +11,6 @@ conda update conda
 # 验证安装
 conda --version
 
-## 配置Conda镜像
-vim ~/.condarc
-
-# 添加以下内容
-channels:
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/msys2
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/bioconda
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/menpo
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch-lts
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/simpleitk
-- http://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/deepmodeling
-- defaults
-show_channel_urls: true
 
 ## 生物信息软件安装
 # 质控软件安装（fastqc、trimmomatic、multiqc）
@@ -156,7 +133,7 @@ conda install -c bioconda eggnog-mapper
 # 下载并配置数据库
 mkdir -p $HOME/database/eggnog
 cd $HOME/database/eggnog
-download_eggnog_data.py -y  --data_dir .
+download_eggnog_data.py -y --data_dir .
 
 # 运行注释
 emapper.py -i protein.fa --itype proteins \
